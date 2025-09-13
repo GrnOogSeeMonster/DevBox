@@ -16,6 +16,10 @@ http:
         referrerPolicy: "no-referrer-when-downgrade"
         permissionsPolicy: "geolocation=(), microphone=(), camera=()"
         contentSecurityPolicy: "default-src 'self' https: 'unsafe-inline' 'unsafe-eval' data: ws: wss:"
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: false
 
   routers:
     dashboard:
