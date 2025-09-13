@@ -1,0 +1,151 @@
+name: devbox
+services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - --providers.docker
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --api.dashboard=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./traefik/certs:/certs:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sbx-wildcard.rule=HostRegexp(`{subdomain:.+}.sandboxes.devbox.local`)
+      - traefik.http.routers.sbx-wildcard.entrypoints=websecure
+      - traefik.http.routers.sbx-wildcard.tls=true
+      - traefik.http.routers.sbx-wildcard.middlewares=security-headers@file
+    healthcheck:
+      test: ["CMD", "traefik", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ./services/web
+    env_file: [.env]
+    environment:
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXT_PUBLIC_API_BASE=http://localhost
+    volumes:
+      - devbox_workspaces:/workspaces
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`studio.devbox.local`) || Host(`localhost`)
+      - traefik.http.routers.web.entrypoints=websecure
+      - traefik.http.routers.web.tls=true
+      - traefik.http.routers.web.middlewares=security-headers@file
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./services/api
+    env_file: [.env]
+    volumes:
+      - devbox_workspaces:/workspaces
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`api.devbox.local`)
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.tls=true
+      - traefik.http.routers.api.middlewares=security-headers@file
+      # Localhost fallback for paths under /api
+      - traefik.http.routers.api-local.rule=Host(`localhost`) && PathPrefix(`/api`)
+      - traefik.http.routers.api-local.entrypoints=websecure
+      - traefik.http.routers.api-local.tls=true
+      - traefik.http.routers.api-local.priority=1000
+      - traefik.http.routers.api-local.middlewares=security-headers@file
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+    env_file: [.env]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - devbox_workspaces:/workspaces
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.orch.rule=Host(`orchestrator.devbox.local`)
+      - traefik.http.routers.orch.entrypoints=websecure
+      - traefik.http.routers.orch.tls=true
+      - traefik.http.routers.orch.middlewares=security-headers@file
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: ./services/worker
+    env_file: [.env]
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    env_file: [.env]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - devbox_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${REDIS_PASSWORD}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "PING"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - devbox_minio:/data
+    ports:
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  devbox_workspaces: {}
+  devbox_db: {}
+  devbox_minio: {}

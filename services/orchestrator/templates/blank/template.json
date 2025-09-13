@@ -1,0 +1,5 @@
+{
+  "name": "Blank",
+  "port": 5173,
+  "dev_command": "python -m http.server 5173 --bind 0.0.0.0"
+}

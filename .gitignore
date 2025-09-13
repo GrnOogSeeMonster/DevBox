@@ -1,0 +1,43 @@
+# Node
+node_modules/
+.pnp/
+.pnp.cjs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+
+# Build artifacts
+.next/
+dist/
+build/
+coverage/
+
+# Docker
+**/certs/**
+!traefik/certs/.gitkeep
+**/.cache/**
+
+# Env
+.env
+.env.*.local
+
+# Misc
+*.log
+*.sqlite3

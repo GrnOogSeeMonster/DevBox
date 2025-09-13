@@ -1,0 +1,26 @@
+tls:
+  certificates:
+    - certFile: "/certs/devbox-local.pem"
+      keyFile: "/certs/devbox-local-key.pem"
+
+http:
+  middlewares:
+    security-headers:
+      headers:
+        sslRedirect: true
+        stsSeconds: 0
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        customFrameOptionsValue: "SAMEORIGIN"
+        referrerPolicy: "no-referrer-when-downgrade"
+        permissionsPolicy: "geolocation=(), microphone=(), camera=()"
+        contentSecurityPolicy: "default-src 'self' https: 'unsafe-inline' 'unsafe-eval' data: ws: wss:"
+
+  routers:
+    dashboard:
+      rule: "Host(`traefik.devbox.local`)"
+      service: api@internal
+      entryPoints: [websecure]
+      tls: {}
+      middlewares: [security-headers]
