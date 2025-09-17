@@ -27,7 +27,8 @@ Open `https://studio.devbox.local`.
 - UI: `https://studio.devbox.local`
 - API: `https://api.devbox.local`
 - Orchestrator WS logs: `wss://orchestrator.devbox.local/logs/<sandboxId>`
-- Preview: `https://preview-<sandbox-id>.sandboxes.devbox.local`
+- Preview (path-based, deterministic): `https://studio.devbox.local/api/preview/<sandbox-id>`
+- Preview (DNS-based, optional): `https://preview-<sandbox-id>.sandboxes.devbox.local`
 
 ## Commands
 ```bash
@@ -49,3 +50,10 @@ Add a folder under `services/orchestrator/templates/<stack>` with `template.json
 ## Troubleshooting
 - If TLS errors, trust mkcert root and re-run `make bootstrap`.
 - On Windows, run from WSL for best compatibility.
+- If preview is blank, confirm the sandbox dev server started and visit the path-based URL above.
+
+## Deterministic Sessions and CLI
+
+- Session metadata is saved at `/workspaces/<projectId>/session.json` when a sandbox is created.
+- Orchestrator uses a writeable workspace and caches pnpm store at `/workspaces/<projectId>/.pnpm-store` for deterministic installs.
+- The Studio always embeds preview via the path router for reliability.

@@ -1,0 +1,50 @@
+{
+  "model_options": ["Claude Code", "Codex (GPT-5)", "Gemini CLI"],
+  "stack_options": ["Next.js", "Vite + React", "Vite + Vue", "SvelteKit"],
+  "purpose_options": ["Modern Web App", "Backend API", "Game Dev", "Traditional Web", "Static Site", "CLI"],
+  "routes": {
+    "wizard": "services/web/app/(studio)/wizard/WizardClient.tsx",
+    "wizard_page": "services/web/app/(studio)/wizard/page.tsx",
+    "orchestrator": "services/orchestrator/app/main.py",
+    "agent_window": "services/web/components/AgentPane.tsx",
+    "studio_page": "services/web/app/studio/[id]/page.tsx",
+    "api_projects": "services/api/app/main.py#create_project",
+    "api_sandboxes": "services/api/app/main.py#create_sandbox"
+  },
+  "scaffold_templates": {
+    "Next.js": "services/orchestrator/templates/next",
+    "Vite+React": "services/orchestrator/templates/vite-react",
+    "Vite+Vue": "NOT_IMPLEMENTED",
+    "SvelteKit": "services/orchestrator/templates/sveltekit",
+    "Blank": "services/orchestrator/templates/blank"
+  },
+  "wizard_stack_keys": {
+    "Next.js": "next",
+    "Vite + React": "vite-react",
+    "Vite + Vue": "vite-vue",
+    "SvelteKit": "sveltekit"
+  },
+  "wizard_purpose_keys": {
+    "Modern Web App": "modern-web",
+    "Backend API": "backend",
+    "Game Dev": "game",
+    "Traditional Web": "traditional",
+    "Static Site": "static",
+    "CLI": "manual"
+  },
+  "current_flow": {
+    "1": "Wizard selects model, stack, purpose",
+    "2": "API creates project with workspace directory",
+    "3": "API creates sandbox via orchestrator",
+    "4": "Orchestrator copies template and starts container",
+    "5": "Studio opens with preview and agent pane",
+    "6": "Agent pane provides basic WebSocket/HTTP echo only"
+  },
+  "gaps_identified": {
+    "cli_injection": "No CLI is injected or bootstrapped in sandbox",
+    "prompt_files": "No claude.md, codex.md, or GEMINI.md files created",
+    "algorithm_persistence": "Agentic Factory Algorithm not present",
+    "agent_bootstrap": "Agent window doesn't show kickoff prompt or CLI setup",
+    "missing_templates": ["vite-vue", "node", "fastapi", "django", "nestjs", "static"]
+  }
+}

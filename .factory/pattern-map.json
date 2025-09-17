@@ -1,0 +1,101 @@
+{
+  "defaults": {
+    "package_manager": "npm",
+    "node_version": ">=18"
+  },
+  "cli_binding": {
+    "Claude Code": {
+      "promptFile": "claude.md",
+      "launch": "claude",
+      "env": "CLAUDE_API_KEY",
+      "description": "Advanced coding assistant with deep codebase understanding"
+    },
+    "Codex (GPT-5)": {
+      "promptFile": "codex.md",
+      "launch": "codex",
+      "env": "OPENAI_API_KEY",
+      "description": "State-of-the-art coding model with exceptional SWE performance"
+    },
+    "Gemini CLI": {
+      "promptFile": "GEMINI.md",
+      "launch": "gemini",
+      "env": "GEMINI_API_KEY",
+      "description": "Open-source AI agent with 1M-token context"
+    }
+  },
+  "stack_bootstrap": {
+    "Next.js": {
+      "commands": ["npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --import-alias '@/*'"],
+      "port": 3000,
+      "dev": "npm run dev"
+    },
+    "Vite + React": {
+      "commands": ["npm create vite@latest . -- --template react-ts"],
+      "port": 5173,
+      "dev": "npm run dev"
+    },
+    "Vite + Vue": {
+      "commands": ["npm create vite@latest . -- --template vue-ts"],
+      "port": 5173,
+      "dev": "npm run dev"
+    },
+    "SvelteKit": {
+      "commands": ["npm create svelte@latest . -- --template skeleton --types typescript"],
+      "port": 5173,
+      "dev": "npm run dev"
+    }
+  },
+  "purpose_overrides": {
+    "Backend API": {
+      "add_dirs": ["server", "api", "middleware"],
+      "deps": ["express", "@types/express", "cors", "dotenv"],
+      "notes": "Focus on REST API design, middleware, authentication, and database integration"
+    },
+    "Game Dev": {
+      "add_dirs": ["assets", "game", "scenes"],
+      "deps": ["phaser", "pixi.js"],
+      "notes": "Optimize for game loop, asset loading, physics, and real-time interaction"
+    },
+    "Traditional Web": {
+      "add_dirs": ["public", "styles", "scripts"],
+      "deps": [],
+      "notes": "Server-side rendering, progressive enhancement, minimal JavaScript"
+    },
+    "Static Site": {
+      "add_dirs": ["content", "public"],
+      "deps": ["@11ty/eleventy", "markdown-it"],
+      "notes": "Static generation, markdown content, SEO optimization"
+    },
+    "CLI": {
+      "add_dirs": ["bin", "lib", "commands"],
+      "deps": ["commander", "chalk", "inquirer"],
+      "bin": {
+        "devbox-cli": "bin/cli.js"
+      },
+      "notes": "Command-line interface, argument parsing, interactive prompts"
+    },
+    "Modern Web App": {
+      "add_dirs": ["components", "hooks", "utils"],
+      "deps": [],
+      "notes": "SPA/SSR, component architecture, state management, modern tooling"
+    }
+  },
+  "matrix_combinations": {
+    "total": 72,
+    "formula": "3 models × 4 stacks × 6 purposes",
+    "examples": [
+      {
+        "pattern": "Claude Code + Next.js + Modern Web App",
+        "use_case": "Full-stack React app with AI assistance"
+      },
+      {
+        "pattern": "Codex (GPT-5) + Vite + React + Backend API",
+        "use_case": "API-first development with React frontend"
+      },
+      {
+        "pattern": "Gemini CLI + SvelteKit + Game Dev",
+        "use_case": "Interactive web game with Svelte components"
+      }
+    ]
+  }
+}

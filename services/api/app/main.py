@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import json
+from datetime import datetime
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -19,6 +21,13 @@ from sqlmodel import select
 from .database import init_db, get_session
 from .models import Project, Sandbox, User
 from .schemas import ProjectCreate, ProjectOut, SandboxCreate, SandboxOut
+from .config import (
+    save_api_keys, 
+    load_api_keys, 
+    validate_api_keys,
+    check_model_key_configured,
+    get_api_key_for_model
+)
 from sqlmodel import Session
 
 APP_ENV = os.getenv("ENV", "dev")
@@ -28,6 +37,102 @@ ORCH_URL = os.getenv("ORCHESTRATOR_URL", "http://orchestrator:8080")
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-local-dotenv")
 
 app = FastAPI(title="DevBox API", version="0.1.0")
+def _append_session_log(project_id: uuid.UUID, message: str) -> None:
+    try:
+        ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        line = f"[{ts}] {message}\n"
+        base = WORKSPACES_ROOT / str(project_id)
+        base.mkdir(parents=True, exist_ok=True)
+        (base / "session.log").open("a", encoding="utf-8").write(line)
+    except Exception:
+        # Best-effort logging; don't fail the request
+        pass
+
+
+def _bootstrap_factory(project: Project, sandbox: Sandbox, project_dir: Path) -> None:
+    """Bootstrap the Agentic Application Factory configuration"""
+    factory_dir = project_dir / ".factory"
+    factory_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Load pattern map from root .factory if it exists
+    pattern_map_path = Path("/app/.factory/pattern-map.json")
+    if not pattern_map_path.exists():
+        # Try workspace root
+        pattern_map_path = Path(".factory/pattern-map.json")
+    
+    if pattern_map_path.exists():
+        pattern_map = json.loads(pattern_map_path.read_text(encoding="utf-8"))
+    else:
+        # Minimal fallback
+        pattern_map = {
+            "cli_binding": {
+                "Gemini CLI": {
+                    "promptFile": "GEMINI.md",
+                    "launch": "gemini",
+                    "env": "GEMINI_API_KEY",
+                    "description": "Open-source AI agent"
+                }
+            }
+        }
+    
+    # Map model names
+    model_map = {
+        "claude": "Claude Code",
+        "codex": "Codex (GPT-5)", 
+        "gemini": "Gemini CLI"
+    }
+    model_name = model_map.get(project.model, "Gemini CLI")
+    
+    # Get CLI binding
+    cli_binding = pattern_map.get("cli_binding", {}).get(model_name, pattern_map["cli_binding"].get("Gemini CLI"))
+    
+    # Create session metadata
+    session_data = {
+        "model": model_name,
+        "stack": project.stack,
+        "purpose": project.purpose,
+        "projectName": project.name,
+        "created_at": datetime.utcnow().isoformat()
+    }
+    (factory_dir / "session.json").write_text(json.dumps(session_data, indent=2), encoding="utf-8")
+    
+    # Copy algorithm if available
+    algorithm_src = Path("/app/.factory/algorithm.md")
+    if not algorithm_src.exists():
+        algorithm_src = Path(".factory/algorithm.md")
+    
+    if algorithm_src.exists():
+        (factory_dir / "algorithm.md").write_bytes(algorithm_src.read_bytes())
+    
+    # Generate prompt file
+    prompt_content = f"""# {cli_binding['promptFile'].replace('.md', '')} Agent Configuration
+
+## Agentic Application Factory
+
+Follow: **Clarify → Plan → Retrieve → Scaffold → Implement → Test → Refine → Finalize**
+
+### Principles
+- **KISS**: Keep It Simple
+- **DRY**: Don't Repeat Yourself
+- **YAGNI**: You Aren't Gonna Need It
+- **Security**: No hardcoded secrets
+
+## Stack: {project.stack}
+## Purpose: {project.purpose}
+
+## Environment
+- CLI: {cli_binding['launch']}
+- Required: {cli_binding['env']}
+- Description: {cli_binding['description']}
+
+## DevBox Context
+- Live preview enabled
+- Hot reload active
+- Workspace: /workspace
+"""
+    
+    (factory_dir / cli_binding["promptFile"]).write_text(prompt_content, encoding="utf-8")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,6 +173,84 @@ def register(first_name: str, last_name: str, username: str, email: str, passwor
     return {"token": token, "user": {"id": str(user.id), "email": user.email, "username": user.username}}
 
 
+@app.get("/api/config/keys")
+def get_api_keys():
+    """Get configured API keys (masked)"""
+    keys = load_api_keys()
+    # Mask the keys for security
+    masked = {}
+    for key, value in keys.items():
+        if value:
+            if len(value) > 8:
+                masked[key] = value[:4] + "****" + value[-4:]
+            else:
+                masked[key] = "********"
+        else:
+            masked[key] = ""
+    return masked
+
+
+@app.post("/api/config/keys")
+def set_api_keys(keys: dict):
+    """Save API keys and validate them"""
+    # Clean the input
+    clean_keys = {
+        "claude": keys.get("claude", "").strip(),
+        "codex": keys.get("codex", "").strip(),
+        "gemini": keys.get("gemini", "").strip()
+    }
+    
+    # Save the keys
+    save_api_keys(clean_keys)
+    
+    # Validate the keys
+    validation = validate_api_keys(clean_keys)
+    
+    return {
+        "status": "saved",
+        "validation": validation
+    }
+
+
+@app.post("/api/config/validate-model")
+def validate_model_key(model: str):
+    """Check if a model has a valid API key configured"""
+    has_key = check_model_key_configured(model)
+    
+    if not has_key:
+        return {
+            "valid": False,
+            "message": f"No API key configured for {model}"
+        }
+    
+    # Get and validate the specific key
+    key = get_api_key_for_model(model)
+    if key:
+        # Normalize model to internal key id expected by validate_api_keys
+        model_map = {
+            "claude": "claude",
+            "claude code": "claude",
+            "codex": "codex",
+            "codex (gpt-5)": "codex",
+            "gemini": "gemini",
+            "gemini cli": "gemini",
+        }
+        normalized = model_map.get(model.strip().lower(), "")
+        payload = {normalized: key} if normalized else {"codex": key}
+        validation = validate_api_keys(payload)
+        is_valid = validation.get(normalized, False)
+        
+        return {
+            "valid": is_valid,
+            "message": "API key is valid" if is_valid else "API key validation failed"
+        }
+    
+    return {
+        "valid": False,
+        "message": "Unable to validate API key"
+    }
+
+
 @app.post("/api/auth/login")
 def login(username_or_email: str, password: str, session: Session = Depends(get_session)):
     key = username_or_email.strip().lower()
@@ -80,6 +263,7 @@ def login(username_or_email: str, password: str, session: Session = Depends(get_
 
 @app.post("/api/projects", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, session: Session = Depends(get_session)) -> ProjectOut:
+    _append_session_log(uuid.UUID(int=0), f"API:create_project:start name={payload.name} stack={payload.stack}")
     project = Project(name=payload.name, stack=payload.stack, purpose=payload.purpose, model=payload.model)
     session.add(project)
     session.commit()
@@ -112,11 +296,13 @@ Security: no privileged mode, limited cpu/mem, network off by default.
         encoding="utf-8",
     )
 
+    _append_session_log(project.id, "API:create_project:ok")
     return ProjectOut(id=project.id, name=project.name, stack=project.stack, purpose=project.purpose, model=project.model)
 
 
 @app.post("/api/projects/{project_id}/sandboxes", response_model=SandboxOut)
 def create_sandbox(project_id: uuid.UUID, body: SandboxCreate, session: Session = Depends(get_session)) -> SandboxOut:
+    _append_session_log(project_id, f"API:create_sandbox:start stack={body.stack}")
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -126,17 +312,24 @@ def create_sandbox(project_id: uuid.UUID, body: SandboxCreate, session: Session 
     session.commit()
     session.refresh(sandbox)
 
-    with httpx.Client(timeout=None) as client:
-        r = client.post(
-            f"{ORCH_URL}/sandboxes",
-            json={
-                "sandbox_id": str(sandbox.id),
-                "project_id": str(project_id),
-                "stack": body.stack,
-            },
-        )
-        r.raise_for_status()
-        data = r.json()
+    try:
+        with httpx.Client(timeout=None) as client:
+            r = client.post(
+                f"{ORCH_URL}/sandboxes",
+                json={
+                    "sandbox_id": str(sandbox.id),
+                    "project_id": str(project_id),
+                    "stack": body.stack,
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+    except Exception as ex:
+        sandbox.status = "error"
+        session.add(sandbox)
+        session.commit()
+        _append_session_log(project_id, f"API:create_sandbox:error {ex}")
+        raise HTTPException(status_code=500, detail=f"Orchestrator error: {ex}")
 
     sandbox.status = data.get("status", "running")
     sandbox.container_id = data.get("container_id")
@@ -144,6 +337,30 @@ def create_sandbox(project_id: uuid.UUID, body: SandboxCreate, session: Session 
     session.add(sandbox)
     session.commit()
     session.refresh(sandbox)
+
+    # Persist deterministic session metadata in workspace
+    project_dir = WORKSPACES_ROOT / str(project_id)
+    session_json = {
+        "project_id": str(project_id),
+        "sandbox_id": str(sandbox.id),
+        "stack": sandbox.stack,
+        "status": sandbox.status,
+        "preview_host": sandbox.preview_host,
+        "created_at": int(time.time()),
+    }
+    (project_dir / "session.json").write_text(
+        json.dumps(session_json, indent=2), encoding="utf-8"
+    )
+    
+    # Bootstrap the factory configuration
+    try:
+        _bootstrap_factory(project, sandbox, project_dir)
+        _append_session_log(project_id, f"API:bootstrap_factory:ok")
+    except Exception as e:
+        _append_session_log(project_id, f"API:bootstrap_factory:error {e}")
+        # Non-fatal error, continue
+    
+    _append_session_log(project_id, f"API:create_sandbox:ok sandbox_id={sandbox.id} preview_host={sandbox.preview_host}")
 
     return SandboxOut(
         id=sandbox.id,
@@ -253,6 +470,40 @@ def export_project(project_id: uuid.UUID):
     mem.seek(0)
     headers = {"Content-Disposition": f"attachment; filename=project-{project_id}.zip"}
     return StreamingResponse(mem, media_type="application/zip", headers=headers)
+
+
+@app.get("/api/sandboxes/{sandbox_id}")
+async def get_sandbox(sandbox_id: str, session: Session = Depends(get_session)):
+    """Get sandbox details"""
+    sandbox = session.get(Sandbox, sandbox_id)
+    if not sandbox:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    # Determine port from template.json in the workspace for accuracy
+    port = 5173
+    try:
+        tmpl = WORKSPACES_ROOT / str(sandbox.project_id) / "template.json"
+        if tmpl.exists():
+            data = json.loads(tmpl.read_text(encoding="utf-8"))
+            port = int(data.get("port", port))
+    except Exception:
+        pass
+
+    return {
+        "id": sandbox.id,
+        "project_id": sandbox.project_id,
+        "status": sandbox.status,
+        "port": port,
+        "container_name": f"sandbox-{sandbox_id}",
+    }
+
+
+@app.get("/api/projects/{project_id}/session-log")
+def get_session_log(project_id: uuid.UUID):
+    base = WORKSPACES_ROOT / str(project_id)
+    log_file = base / "session.log"
+    if not log_file.exists():
+        return StreamingResponse(iter([b""]), media_type="text/plain")
+    return StreamingResponse(open(log_file, "rb"), media_type="text/plain")
 
 
 @app.post("/api/import")

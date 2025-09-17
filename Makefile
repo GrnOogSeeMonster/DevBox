@@ -18,6 +18,12 @@ help:
 	@echo "  logs        Tail logs"
 	@echo "  seed        Seed example data"
 	@echo "  test        Run API tests"
+	@echo "  cli         Run CLI to create project/sandbox (args via NEW/NAME/MODEL/PURPOSE)"
+	@echo "  devbox-run-headless  Run headless wizard with CONFIG or flags"
+	@echo "  devbox-validate      Run E2E validation script"
+	@echo "  devbox-doctor        Run doctor diagnostics"
+	@echo "  reload     Build changed images and (re)start without teardown"
+	@echo "  restart    Fast restart of core app services"
 
 .PHONY: init
 init:
@@ -56,6 +62,36 @@ seed: ensure-docker-config
 .PHONY: test
 test: ensure-docker-config
 	DOCKER_CONFIG="$(DOCKER_CFG)" docker compose -p "$(PROJECT_NAME)" -f "$(COMPOSE_FILE)" exec -T api pytest -q || true
+
+.PHONY: cli
+cli: ensure-docker-config
+	DOCKER_CONFIG="$(DOCKER_CFG)" docker compose -p "$(PROJECT_NAME)" -f "$(COMPOSE_FILE)" exec -T api python -m app.cli new --stack "$${NEW:-next}" --name "$${NAME:-My App}" --model "$${MODEL:-gemini}" --purpose "$${PURPOSE:-modern-web}"
+
+.PHONY: devbox-run-headless
+devbox-run-headless:
+	@if [ -n "$$CONFIG" ]; then \
+		DOCKER_CONFIG="$(DOCKER_CFG)" docker compose -p "$(PROJECT_NAME)" -f "$(COMPOSE_FILE)" exec -T api python -m app.cli config --file "$$CONFIG"; \
+	else \
+		$(MAKE) cli; \
+	fi
+
+.PHONY: devbox-validate
+devbox-validate:
+	bash scripts/devbox_wizard_e2e.sh
+
+.PHONY: devbox-doctor
+devbox-doctor:
+	bash scripts/devbox_doctor.sh
+
+.PHONY: reload
+reload: ensure-env ensure-docker-config
+	DOCKER_CONFIG="$(DOCKER_CFG)" docker compose -p "$(PROJECT_NAME)" -f "$(COMPOSE_FILE)" up -d --build
+	@echo "Reloaded (built + started)"
+
+.PHONY: restart
+restart: ensure-docker-config
+	DOCKER_CONFIG="$(DOCKER_CFG)" docker compose -p "$(PROJECT_NAME)" -f "$(COMPOSE_FILE)" restart web api orchestrator
+	@echo "Restarted: web api orchestrator"
 
 .PHONY: ensure-env
 ensure-env:
