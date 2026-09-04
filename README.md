@@ -1,6 +1,52 @@
 # DevBox Studio (Local Sandbox Platform)
 
-A Docker Compose stack providing a codesandbox-style local experience with browser IDE, sandboxed previews, and instant feedback.
+
+A local CodeSandbox: a wizard picks a model, a stack and a purpose, the orchestrator
+spins a sandboxed container with that scaffold and an AI CLI already installed, and the
+Studio gives you a file tree, Monaco, a live preview and streaming logs against it.
+
+---
+
+## Status
+
+**Working. The wizard-to-preview loop runs end to end.** Last worked on
+17 September 2025.
+
+| | |
+|---|---|
+| Size | ~4,000 lines across a FastAPI API, a Docker orchestrator and a Next.js Studio |
+| Working | Wizard, session creation, container orchestration, path-based preview proxy, file CRUD, WebSocket logs, encrypted API-key storage, CLI |
+| Partial | Editor pane is a shell around Monaco; `make test` is a placeholder target |
+| Tests | An e2e smoke script (`services/api/tests/e2e_smoke.py`) plus one API test file |
+| Verified | `docs/fix-report.md` records the debugging pass that made the wizard-to-preview path deterministic |
+
+### What is built
+
+| Component | Lines | |
+|---|---|---|
+| `services/api/app/main.py` | 516 | Project and sandbox creation, file CRUD, import/export, session persistence |
+| `services/orchestrator/app/main.py` | 479 | Docker SDK container lifecycle, template scaffolding, pnpm store caching, preview URL emission |
+| `services/web/lib/sessionOrchestrator.ts` | 406 | Pattern resolution — binds model + stack + purpose to a CLI and a scaffold |
+| `services/web/app/(studio)/wizard/` | 306 | The wizard, with API-key validation gating session creation |
+| `services/web/app/config/page.tsx` | 244 | API-key management UI (Fernet-encrypted at rest) |
+| `services/web/components/AgentBootstrap.tsx` | 221 | Per-session setup checklist, launch command and generated kickoff prompt |
+| `services/api/app/cli.py` | 77 | `python -m app.cli new` / `build` — machine-readable JSON output |
+
+`.factory/` holds the design that drives it: `algorithm.md` (the factory algorithm each
+session bootstraps with), `pattern-map.json` (CLI and stack bindings) and
+`patterns.json` (the pattern audit).
+
+### Known limitations
+
+- The AI CLI package names in the container bootstrap are placeholders, not the real
+  published packages.
+- DNS-based subdomain previews need hosts entries and wildcard TLS; the path-based
+  preview is the supported default.
+- Templates without a lockfile fall back to a best-effort install.
+- Sandboxes have no network by default and it is toggled explicitly for installs — good
+  for isolation, occasionally surprising during development.
+
+---
 
 ## Prerequisites
 - Docker Desktop or Docker Engine
